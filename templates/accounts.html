@@ -1,0 +1,160 @@
+<h2>Quản lý tài khoản</h2>
+<div class="d-flex justify-content-between mb-3">
+    <div>
+        <a href="{{ url_for('add_account') }}" class="btn btn-primary">+ Thêm tài khoản</a>
+    </div>
+    <div class="d-flex gap-3">
+        <input type="text" class="form-control" placeholder="Tìm kiếm tài khoản theo tên, sdt, email">
+        <select class="form-select">
+            <option>Tất cả loại tài khoản</option>
+            <option>Quản lý</option>
+            <option>Nhân viên</option>
+            <option>Khách hàng</option>
+        </select>
+        <select class="form-select">
+            <option>Tất cả trạng thái</option>
+            <option>Active</option>
+            <option>Lock</option>
+        </select>
+        <input type="date" class="form-control">
+        <button class="btn btn-outline-secondary">Bộ lọc</button>
+    </div>
+</div>
+<div class="table-container" style="background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Họ tên</th>
+                <th>Quyền hạn</th>
+                <th>Trạng thái</th>
+                <th>Ngày tạo</th>
+                <th>Thao tác</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for account in data.accounts %}
+            <tr>
+                <td>#{{ '%03d' % account[0] }}</td>
+                <td>{{ account[1] }}</td>
+                <td>{{ 'Khách hàng' if account[2] == 'KH' else 'Nhân viên' if account[2] == 'Nvien' else 'Quản lý' }}</td>
+                <td>
+                    <span class="badge status-badge {% if account[4] == 'Active' %}bg-success{% else %}bg-danger{% endif %}" data-user-id="{{ account[0] }}">
+                        {{ account[4] }}
+                    </span>
+                </td>
+                <td>{{ account[3] }}</td>
+                <td>
+                    <a href="{{ url_for('edit_account', user_id=account[0]) }}" class="btn btn-sm btn-outline-primary" title="Sửa">
+                        <i data-lucide="edit"></i>
+                    </a>
+                    <button class="btn btn-sm toggle-status-btn {% if account[4] == 'Active' %}btn-outline-danger{% else %}btn-outline-success{% endif %}" 
+                            data-user-id="{{ account[0] }}" 
+                            title="{% if account[4] == 'Active' %}Khóa{% else %}Mở khóa{% endif %}">
+                        <i data-lucide="{% if account[4] == 'Active' %}lock{% else %}unlock{% endif %}"></i>
+                    </button>
+                    <a href="{{ url_for('account_detail', user_id=account[0]) }}" class="btn btn-sm btn-outline-info" title="Xem chi tiết">
+                        <i data-lucide="info"></i>
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            Hiển thị {{ (data.page - 1) * 8 + 1 }}-{{ (data.page - 1) * 8 + data.accounts|length }} trên tổng số {{ data.total_accounts }} tài khoản
+        </div>
+        <nav aria-label="Page navigation">
+            <ul class="pagination">
+                <li class="page-item {% if data.page == 1 %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('dashboard', menu='accounts', page=data.page-1) }}">Trước</a>
+                </li>
+                {% for p in range(1, data.total_pages + 1) %}
+                <li class="page-item {% if p == data.page %}active{% endif %}">
+                    <a class="page-link" href="{{ url_for('dashboard', menu='accounts', page=p) }}">{{ p }}</a>
+                </li>
+                {% endfor %}
+                <li class="page-item {% if data.page == data.total_pages %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('dashboard', menu='accounts', page=data.page+1) }}">Sau</a>
+                </li>
+            </ul>
+        </nav>
+    </div>
+</div>
+
+<!-- Thêm SweetAlert2 -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+    document.querySelectorAll('.toggle-status-btn').forEach(button => {
+        button.addEventListener('click', async function() {
+            const userId = this.getAttribute('data-user-id');
+            const statusBadge = document.querySelector(`.status-badge[data-user-id="${userId}"]`);
+            const currentStatus = statusBadge.textContent.trim();
+
+            // Hiển thị xác nhận bằng SweetAlert2
+            const result = await Swal.fire({
+                title: 'Xác nhận',
+                text: `Bạn có chắc muốn ${currentStatus === 'Active' ? 'khóa' : 'mở khóa'} tài khoản này?`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Có',
+                cancelButtonText: 'Không'
+            });
+
+            if (result.isConfirmed) {
+                try {
+                    const response = await fetch(`/toggle_status/${userId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    // Kiểm tra nếu phản hồi không thành công
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'Lỗi không xác định từ server');
+                    }
+
+                    // Phản hồi thành công
+                    const data = await response.json();
+
+                    // Cập nhật giao diện
+                    statusBadge.textContent = data.new_status;
+                    statusBadge.classList.remove('bg-success', 'bg-danger');
+                    statusBadge.classList.add(data.new_status === 'Active' ? 'bg-success' : 'bg-danger');
+                    this.classList.remove('btn-outline-success', 'btn-outline-danger');
+                    this.classList.add(data.new_status === 'Active' ? 'btn-outline-danger' : 'btn-outline-success');
+                    this.setAttribute('title', data.new_status === 'Active' ? 'Khóa' : 'Mở khóa');
+
+                    // Kiểm tra xem phần tử <i> có tồn tại trước khi cập nhật
+                    const iconElement = this.querySelector('i');
+                    if (iconElement) {
+                        iconElement.setAttribute('data-lucide', data.new_status === 'Active' ? 'lock' : 'unlock');
+                        // Tải lại biểu tượng Lucide
+                        lucide.createIcons();
+                    } else {
+                        console.warn('Không tìm thấy phần tử <i> trong nút toggle-status-btn');
+                    }
+
+                    // Hiển thị thông báo thành công
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Thành công',
+                        text: data.success,
+                        confirmButtonText: 'OK'
+                    });
+                } catch (error) {
+                    // Hiển thị thông báo lỗi
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Lỗi',
+                        text: error.message || 'Đã xảy ra lỗi khi gửi yêu cầu!',
+                        confirmButtonText: 'OK'
+                    });
+                }
+            }
+        });
+    });
+</script>
